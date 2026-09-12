@@ -127,6 +127,29 @@ canvas{display:block; width:100%; height:100%;}
 }
 #hitmarker svg{width:100%;height:100%;}
 #hitmarker.show{opacity:1;}
+#hitmarker.headshot svg g{stroke:#ffe14f;}
+
+#crosshair.aiming{transform:translate(-50%,-50%) scale(0.62);}
+#crosshair.aiming svg circle{opacity:0.12;}
+
+#wind-indicator{
+  position:absolute; bottom:26px; left:28px; width:108px;
+  background:linear-gradient(180deg, rgba(18,26,28,0.82), rgba(15,21,22,0.7));
+  border:1px solid var(--line); padding:10px 12px; border-radius:2px;
+  display:flex; align-items:center; gap:10px;
+}
+#wind-indicator .wicon{width:22px; height:22px; flex:none; transition:transform 0.5s ease-out;}
+#wind-indicator .wtext{font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim); line-height:1.5;}
+#wind-indicator .wtext b{color:var(--cyan); font-size:13px; display:block;}
+
+#hazard-banner{
+  position:absolute; top:64px; left:50%; transform:translateX(-50%);
+  font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:0.2em;
+  color:var(--danger); text-transform:uppercase; text-align:center;
+  opacity:0; transition:opacity 0.3s; text-shadow:0 0 10px rgba(255,79,86,0.65);
+  white-space:nowrap;
+}
+#hazard-banner.show{opacity:1;}
 
 #damage-flash{
   position:fixed; inset:0; z-index:8; pointer-events:none;
@@ -208,6 +231,7 @@ h1{
   <div class="corner-frame cf-br"></div>
 
   <div id="objective">Combat Simulation &mdash; <span class="t">Arena 04</span></div>
+  <div id="hazard-banner">Seismic Activity Detected</div>
 
   <div class="status-panel player">
     <div class="status-label"><span class="status-tag">You</span><span class="mono">INTEGRITY</span></div>
@@ -243,6 +267,14 @@ h1{
     <div class="ctrl-key"><div class="keycap" id="key-left">&larr;</div>Turn L</div>
     <div class="ctrl-key"><div class="keycap" id="key-right">&rarr;</div>Turn R</div>
     <div class="ctrl-key"><div class="keycap space" id="key-space">Space</div>Fire</div>
+    <div class="ctrl-key"><div class="keycap" id="key-alt">Alt</div>Aim</div>
+  </div>
+
+  <div id="wind-indicator">
+    <svg class="wicon" id="wind-arrow" viewBox="0 0 24 24"><g stroke="var(--cyan)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="20" x2="12" y2="4"/><polyline points="6,9 12,4 18,9"/>
+    </g></svg>
+    <div class="wtext">WIND<b id="wind-speed">0 kt</b></div>
   </div>
 
   <div id="cooldown">
@@ -255,16 +287,17 @@ h1{
   <div class="panel">
     <p class="eyebrow">Live-Fire Simulator // Sector 04</p>
     <h1>Arena Protocol</h1>
-    <p class="sub">One combat drone. One arena. No mouse required &mdash; you drive this rig on the arrow pad alone. Turn, close distance, and put Hostile&#8209;07 down before it does the same to you.</p>
+    <p class="sub">One combat drone. One arena. No mouse required &mdash; you drive this rig on the arrow pad alone. Turn, close distance, and put Hostile&#8209;07 down before it does the same to you. Watch for fire zones, shifting wind, and seismic events &mdash; headshots put it down fast.</p>
     <div class="brief">
       <div><div class="k">Arena</div><div class="v">40m &times; 40m, 6 pillars</div></div>
-      <div><div class="k">Opponent</div><div class="v">Hostile&#8209;07 AI</div></div>
+      <div><div class="k">Hazards</div><div class="v">Fire &middot; Wind &middot; Quakes</div></div>
       <div><div class="k">Win Condition</div><div class="v">Reduce to 0 HP</div></div>
     </div>
     <div class="controls-brief">
       <div class="ctrl-key"><div class="keycap">&uarr;&darr;</div>Move</div>
       <div class="ctrl-key"><div class="keycap">&larr;&rarr;</div>Turn</div>
       <div class="ctrl-key"><div class="keycap space">Space</div>Fire</div>
+      <div class="ctrl-key"><div class="keycap">Alt</div>Aim (ADS)</div>
     </div>
     <button class="btn" id="start-btn">Enter Arena</button>
   </div>
@@ -375,6 +408,30 @@ h1{
     pillars.push({mesh:m, x:p[0], z:p[1], r:1.2});
   });
 
+  // Fire hazard zones
+  var fireZoneDefs = [[-5,3,1.9],[5,-5,1.9],[-14,9,1.7]];
+  var fireScorchMat = new THREE.MeshStandardMaterial({color:0x1a0d08, roughness:1, emissive:0x3a1206, emissiveIntensity:0.4});
+  var flameMat = new THREE.MeshStandardMaterial({color:0xff6a2a, emissive:0xff5500, emissiveIntensity:1.4, transparent:true, opacity:0.85});
+  var fireZones = fireZoneDefs.map(function(f){
+    var x=f[0], z=f[1], r=f[2];
+    var scorch = new THREE.Mesh(new THREE.CircleGeometry(r,24), fireScorchMat);
+    scorch.rotation.x = -Math.PI/2; scorch.position.set(x,0.02,z);
+    scorch.receiveShadow = true;
+    scene.add(scorch);
+    var light = new THREE.PointLight(0xff5500, 1.4, 6);
+    light.position.set(x,1.3,z); scene.add(light);
+    var flames = [];
+    for(var i=0;i<5;i++){
+      var cone = new THREE.Mesh(new THREE.ConeGeometry(0.16+Math.random()*0.08,0.7+Math.random()*0.4,6), flameMat.clone());
+      var ang = Math.random()*Math.PI*2, rad = Math.random()*r*0.55;
+      cone.position.set(x+Math.cos(ang)*rad, 0.4, z+Math.sin(ang)*rad);
+      scene.add(cone);
+      flames.push(cone);
+    }
+    return {x:x, z:z, r:r, light:light, flames:flames};
+  });
+  var FIRE_DPS = 16;
+
   // Player weapon view-model
   var gunGroup = new THREE.Group();
   var gunMat = new THREE.MeshStandardMaterial({color:0x25302f, roughness:0.4, metalness:0.7});
@@ -411,9 +468,15 @@ h1{
   var legR = legL.clone(); legR.position.x = 0.2;
   var core = new THREE.Mesh(new THREE.RingGeometry(0.13,0.18,16), enemyGlow);
   core.position.set(0,1.15,0.23);
+  head.userData.part = 'head'; eye.userData.part = 'head';
+  torso.userData.part = 'torso'; core.userData.part = 'torso';
+  armL.userData.part = 'limb'; armR.userData.part = 'limb';
+  legL.userData.part = 'limb'; legR.userData.part = 'limb';
   enemyGroup.add(torso, head, eye, armL, armR, legL, legR, core);
   enemyGroup.position.set(0, 0, -10);
   scene.add(enemyGroup);
+
+  var PART_DAMAGE = {head:46, torso:14, limb:8};
 
   var enemyLight = new THREE.PointLight(0x5fe1c9, 0.6, 4);
   enemyLight.position.set(0,1.6,0);
@@ -446,7 +509,10 @@ h1{
     turnSpeed: 2.1,
     radius: 0.5,
     shotCooldown: 0,
-    shotCooldownMax: 0.42
+    shotCooldownMax: 0.42,
+    aiming: false,
+    baseFov: 72,
+    aimFov: 48
   };
   var enemy = {
     hp: 100, maxHp: 100,
@@ -459,8 +525,13 @@ h1{
     state: 'patrol'
   };
 
-  var keys = {up:false, down:false, left:false, right:false, space:false};
+  var keys = {up:false, down:false, left:false, right:false, space:false, alt:false};
   var stats = {shotsFired:0, shotsHit:0, startTime:0};
+  var gameEnding = false;
+  var hazards = {
+    wind: {x:0, z:0, tx:0, tz:0, timer:0.1},
+    quake: {warn:0, active:false, time:0, cooldown:14}
+  };
 
   // ---------- DOM ----------
   var hud = document.getElementById('hud');
@@ -477,8 +548,11 @@ h1{
   var keyEls = {
     up:document.getElementById('key-up'), down:document.getElementById('key-down'),
     left:document.getElementById('key-left'), right:document.getElementById('key-right'),
-    space:document.getElementById('key-space')
+    space:document.getElementById('key-space'), alt:document.getElementById('key-alt')
   };
+  var windArrow = document.getElementById('wind-arrow');
+  var windSpeedEl = document.getElementById('wind-speed');
+  var hazardBanner = document.getElementById('hazard-banner');
 
   function resetGame(){
     player.hp = player.maxHp;
@@ -492,6 +566,12 @@ h1{
     tracers.forEach(function(t){ scene.remove(t.obj); });
     tracers.length = 0;
     stats.shotsFired = 0; stats.shotsHit = 0; stats.startTime = performance.now();
+    gameEnding = false;
+    camera.fov = player.baseFov; camera.updateProjectionMatrix();
+    hazards.wind.x = hazards.wind.z = hazards.wind.tx = hazards.wind.tz = 0;
+    hazards.wind.timer = 2;
+    hazards.quake.warn = 0; hazards.quake.active = false; hazards.quake.cooldown = 14 + Math.random()*8;
+    hazardBanner.classList.remove('show');
     updateHudBars();
   }
 
@@ -548,13 +628,14 @@ h1{
     if(keyEls[k]) keyEls[k].classList.toggle('active', active);
   }
   window.addEventListener('keydown', function(e){
-    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].indexOf(e.key)!==-1){
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Alt'].indexOf(e.key)!==-1){
       e.preventDefault();
     }
     if(e.key==='ArrowUp'){ keys.up=true; setKeyVisual('up',true); }
     if(e.key==='ArrowDown'){ keys.down=true; setKeyVisual('down',true); }
     if(e.key==='ArrowLeft'){ keys.left=true; setKeyVisual('left',true); }
     if(e.key==='ArrowRight'){ keys.right=true; setKeyVisual('right',true); }
+    if(e.key==='Alt'){ keys.alt=true; setKeyVisual('alt',true); }
     if(e.key===' '){
       keys.space=true; setKeyVisual('space',true);
       if(state===STATE.PLAY) tryShoot();
@@ -569,7 +650,12 @@ h1{
     if(e.key==='ArrowDown'){ keys.down=false; setKeyVisual('down',false); }
     if(e.key==='ArrowLeft'){ keys.left=false; setKeyVisual('left',false); }
     if(e.key==='ArrowRight'){ keys.right=false; setKeyVisual('right',false); }
+    if(e.key==='Alt'){ keys.alt=false; setKeyVisual('alt',false); }
     if(e.key===' '){ keys.space=false; setKeyVisual('space',false); }
+  });
+  window.addEventListener('blur', function(){
+    keys.up=keys.down=keys.left=keys.right=keys.space=keys.alt=false;
+    Object.keys(keyEls).forEach(function(k){ setKeyVisual(k,false); });
   });
 
   // ---------- COLLISION HELPERS ----------
@@ -610,6 +696,21 @@ h1{
 
   // ---------- SHOOTING ----------
   var raycaster = new THREE.Raycaster();
+  function currentSpread(){
+    var windMag = Math.hypot(hazards.wind.x, hazards.wind.z);
+    var spread = player.aiming ? 0.0025 : 0.028;
+    spread += windMag * (player.aiming ? 0.0015 : 0.009);
+    if(hazards.quake.active) spread += player.aiming ? 0.02 : 0.055;
+    return spread;
+  }
+  function applySpread(dir, spread){
+    if(spread<=0) return dir;
+    var right = new THREE.Vector3().crossVectors(dir, camera.up).normalize();
+    var up = new THREE.Vector3().crossVectors(right, dir).normalize();
+    var a = (Math.random()*2-1)*spread;
+    var b = (Math.random()*2-1)*spread;
+    return dir.clone().addScaledVector(right,a).addScaledVector(up,b).normalize();
+  }
   function tryShoot(){
     if(player.shotCooldown > 0) return;
     player.shotCooldown = player.shotCooldownMax;
@@ -620,35 +721,38 @@ h1{
 
     var origin = new THREE.Vector3();
     camera.getWorldPosition(origin);
-    var dirVec = new THREE.Vector3();
-    camera.getWorldDirection(dirVec);
+    var aimDir = new THREE.Vector3();
+    camera.getWorldDirection(aimDir);
+    var dirVec = applySpread(aimDir, currentSpread());
     raycaster.set(origin, dirVec);
 
     var targets = [enemyGroup, ...pillars.map(function(p){return p.mesh;})];
     var intersects = raycaster.intersectObjects(targets, true);
     var end = origin.clone().add(dirVec.clone().multiplyScalar(40));
-    var hitEnemy = false;
+    var hitPart = null;
     if(intersects.length>0){
       end = intersects[0].point;
       var obj = intersects[0].object;
       var isEnemy = false;
       enemyGroup.traverse(function(c){ if(c===obj) isEnemy = true; });
-      if(isEnemy) hitEnemy = true;
+      if(isEnemy) hitPart = obj.userData.part || 'torso';
     }
     fireTracer(origin.clone().add(dirVec.clone().multiplyScalar(0.5)), end);
 
-    if(hitEnemy && enemy.hp>0){
-      enemy.hp -= 14;
+    if(hitPart && enemy.hp>0){
+      var dmg = PART_DAMAGE[hitPart] || 14;
+      enemy.hp -= dmg;
       stats.shotsHit++;
-      showHitmarker();
-      if(enemy.hp<=0){ enemy.hp=0; updateHudBars(); setTimeout(function(){ endGame(true); }, 300); }
+      showHitmarker(hitPart==='head');
+      if(enemy.hp<=0 && !gameEnding){ enemy.hp=0; gameEnding=true; updateHudBars(); setTimeout(function(){ endGame(true); }, 300); }
     }
     updateHudBars();
   }
 
   var hitmarkerTimeout = null;
-  function showHitmarker(){
+  function showHitmarker(isHeadshot){
     hitmarker.classList.add('show');
+    hitmarker.classList.toggle('headshot', !!isHeadshot);
     clearTimeout(hitmarkerTimeout);
     hitmarkerTimeout = setTimeout(function(){ hitmarker.classList.remove('show'); }, 140);
   }
@@ -703,6 +807,11 @@ h1{
     }
     if(Math.random()<0.01) enemy.dir *= -1;
 
+    if(hazards.quake.active){
+      enemy.x += (Math.random()*2-1)*1.2*dt;
+      enemy.z += (Math.random()*2-1)*1.2*dt;
+    }
+
     var resolved = resolvePillarCollision(enemy.x, enemy.z, enemy.radius);
     enemy.x = resolved[0]; enemy.z = resolved[1];
 
@@ -732,8 +841,8 @@ h1{
   function updateProjectiles(dt){
     for(var i=projectiles.length-1;i>=0;i--){
       var p = projectiles[i];
-      p.mesh.position.x += p.vx*dt;
-      p.mesh.position.z += p.vz*dt;
+      p.mesh.position.x += p.vx*dt + hazards.wind.x*dt*1.6;
+      p.mesh.position.z += p.vz*dt + hazards.wind.z*dt*1.6;
       p.life -= dt;
       var dx = p.mesh.position.x - player.x, dz = p.mesh.position.z - player.z;
       var dist = Math.sqrt(dx*dx+dz*dz);
@@ -749,7 +858,7 @@ h1{
         updateHudBars();
         scene.remove(p.mesh);
         projectiles.splice(i,1);
-        if(player.hp<=0){ player.hp=0; updateHudBars(); setTimeout(function(){ endGame(false); }, 300); }
+        if(player.hp<=0 && !gameEnding){ player.hp=0; gameEnding=true; updateHudBars(); setTimeout(function(){ endGame(false); }, 300); }
         continue;
       }
       if(blocked || p.life<=0){
@@ -770,10 +879,94 @@ h1{
     }
   }
 
+  // ---------- HAZARDS: fire / wind / earthquake ----------
+  function damagePlayer(amount){
+    if(state!==STATE.PLAY) return;
+    player.hp -= amount;
+    if(player.hp<=0 && !gameEnding){
+      player.hp=0; gameEnding=true; updateHudBars();
+      setTimeout(function(){ endGame(false); }, 300);
+    }
+  }
+  function damageEnemy(amount){
+    if(enemy.hp<=0) return;
+    enemy.hp -= amount;
+    if(enemy.hp<=0 && !gameEnding){
+      enemy.hp=0; gameEnding=true; updateHudBars();
+      setTimeout(function(){ endGame(true); }, 300);
+    }
+  }
+
+  var lastFireTick = 0;
+  function updateHazards(dt){
+    // --- fire zones: visual flicker + damage-over-time ---
+    fireZones.forEach(function(fz){
+      fz.light.intensity = 1.1 + Math.random()*0.6;
+      fz.flames.forEach(function(f,i){
+        f.scale.y = 0.85 + Math.sin(performance.now()*0.01 + i*1.7)*0.25 + Math.random()*0.15;
+        f.rotation.y += dt*(1.2+i*0.25);
+      });
+      if(state!==STATE.PLAY) return;
+      if(Math.hypot(player.x-fz.x, player.z-fz.z) < fz.r){
+        damagePlayer(FIRE_DPS*dt);
+        if(Math.random() < dt*4) flashDamage();
+        updateHudBars();
+      }
+      if(Math.hypot(enemy.x-fz.x, enemy.z-fz.z) < fz.r){
+        damageEnemy(FIRE_DPS*0.65*dt);
+        updateHudBars();
+      }
+    });
+
+    // --- wind: slowly-drifting gusts that steer shots & projectiles ---
+    hazards.wind.timer -= dt;
+    if(hazards.wind.timer<=0){
+      hazards.wind.timer = 5 + Math.random()*5;
+      var ang = Math.random()*Math.PI*2, mag = 0.3+Math.random()*1.1;
+      hazards.wind.tx = Math.cos(ang)*mag;
+      hazards.wind.tz = Math.sin(ang)*mag;
+    }
+    hazards.wind.x += (hazards.wind.tx-hazards.wind.x)*Math.min(1,dt*0.4);
+    hazards.wind.z += (hazards.wind.tz-hazards.wind.z)*Math.min(1,dt*0.4);
+    var windAngle = Math.atan2(hazards.wind.x, -hazards.wind.z);
+    windArrow.style.transform = 'rotate('+(windAngle*180/Math.PI)+'deg)';
+    windSpeedEl.textContent = Math.round(Math.hypot(hazards.wind.x,hazards.wind.z)*18)+' kt';
+
+    // --- earthquake: periodic warning then a violent shake window ---
+    if(state!==STATE.PLAY) return;
+    if(hazards.quake.warn>0){
+      hazards.quake.warn -= dt;
+      hazardBanner.textContent = 'Seismic Activity Detected';
+      hazardBanner.classList.add('show');
+      if(hazards.quake.warn<=0){
+        hazards.quake.active = true;
+        hazards.quake.time = 2.4 + Math.random()*1.2;
+      }
+    } else if(hazards.quake.active){
+      hazards.quake.time -= dt;
+      hazardBanner.textContent = 'Seismic Event — Hold Position';
+      hazardBanner.classList.add('show');
+      if(hazards.quake.time<=0){
+        hazards.quake.active = false;
+        hazards.quake.cooldown = 16 + Math.random()*10;
+        hazardBanner.classList.remove('show');
+      }
+    } else {
+      hazards.quake.cooldown -= dt;
+      if(hazards.quake.cooldown<=0){
+        hazards.quake.warn = 1.6;
+      }
+    }
+  }
+
   // ---------- PLAYER MOVEMENT ----------
   function updatePlayer(dt){
-    if(keys.left) player.yaw += player.turnSpeed*dt;
-    if(keys.right) player.yaw -= player.turnSpeed*dt;
+    player.aiming = keys.alt && state===STATE.PLAY;
+    var turnFactor = player.aiming ? 0.45 : 1;
+    var moveFactor = player.aiming ? 0.55 : 1;
+
+    if(keys.left) player.yaw += player.turnSpeed*turnFactor*dt;
+    if(keys.right) player.yaw -= player.turnSpeed*turnFactor*dt;
 
     var moveDir = 0;
     if(keys.up) moveDir += 1;
@@ -781,14 +974,32 @@ h1{
 
     if(moveDir!==0){
       var fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
-      var nx = player.x + fx*moveDir*player.speed*dt;
-      var nz = player.z + fz*moveDir*player.speed*dt;
+      var nx = player.x + fx*moveDir*player.speed*moveFactor*dt;
+      var nz = player.z + fz*moveDir*player.speed*moveFactor*dt;
+      if(hazards.quake.active){
+        nx += (Math.random()*2-1)*1.4*dt;
+        nz += (Math.random()*2-1)*1.4*dt;
+      }
       var resolved = resolvePillarCollision(nx, nz, player.radius);
       player.x = resolved[0]; player.z = resolved[1];
     }
 
     camera.position.set(player.x, 1.7, player.z);
     camera.rotation.set(0, player.yaw, 0);
+    if(hazards.quake.active){
+      var amp = 0.07;
+      camera.position.x += (Math.random()*2-1)*amp;
+      camera.position.y += (Math.random()*2-1)*amp*0.6;
+      camera.position.z += (Math.random()*2-1)*amp;
+      camera.rotation.z = (Math.random()*2-1)*0.02;
+    } else {
+      camera.rotation.z = 0;
+    }
+
+    var targetFov = player.aiming ? player.aimFov : player.baseFov;
+    camera.fov += (targetFov-camera.fov)*Math.min(1,dt*10);
+    camera.updateProjectionMatrix();
+    crosshair.classList.toggle('aiming', player.aiming);
 
     if(player.shotCooldown>0){
       player.shotCooldown -= dt;
@@ -822,6 +1033,7 @@ h1{
       updateEnemy(dt);
       updateProjectiles(dt);
       updateTracers(dt);
+      updateHazards(dt);
     }
     renderer.render(scene, camera);
   }
