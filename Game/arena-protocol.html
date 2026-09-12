@@ -139,21 +139,21 @@ canvas{display:block; width:100%; height:100%;}
 #scope-overlay .scope-mask{
   position:absolute; inset:0;
   background:radial-gradient(circle at 50% 50%,
-    rgba(0,0,0,0) 0, rgba(0,0,0,0) calc(min(44vh,44vw) - 2px),
-    rgba(0,0,0,0.55) calc(min(44vh,44vw)),
-    #000 calc(min(44vh,44vw) + 10px));
+    rgba(0,0,0,0) 0, rgba(0,0,0,0) calc(min(29vh,29vw) - 2px),
+    rgba(0,0,0,0.5) calc(min(29vh,29vw)),
+    rgba(0,0,0,0.88) calc(min(29vh,29vw) + 14px));
 }
 #scope-overlay .scope-reticle{
   position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  width:min(88vh,88vw); height:min(88vh,88vw);
+  width:min(58vh,58vw); height:min(58vh,58vw);
 }
 #scope-overlay .scope-zoom{
-  position:absolute; top:calc(50% - min(38vh,38vw)); left:50%; transform:translateX(-50%);
-  font-size:13px; letter-spacing:0.2em; color:var(--cyan); opacity:0.85;
+  position:absolute; top:calc(50% - min(25vh,25vw)); left:50%; transform:translateX(-50%);
+  font-size:12px; letter-spacing:0.2em; color:var(--cyan); opacity:0.85;
 }
 #scope-overlay .scope-hint{
-  position:absolute; bottom:calc(50% - min(40vh,40vw)); left:50%; transform:translateX(-50%);
-  font-size:10px; letter-spacing:0.18em; color:var(--text-dim); opacity:0.6; text-transform:uppercase;
+  position:absolute; bottom:calc(50% - min(27vh,27vw)); left:50%; transform:translateX(-50%);
+  font-size:9px; letter-spacing:0.18em; color:var(--text-dim); opacity:0.55; text-transform:uppercase;
 }
 
 /* --- Boss bar --- */
@@ -1110,14 +1110,14 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
   var WEAPONS = {
     rifle: {
       name:'MK4 Carbine', short:'MK4', mag:30, reload:1.55, rate:0.098, auto:true,
-      dmg:{head:46, torso:15, limb:10}, pellets:1,
-      hipSpread:0.026, adsSpread:0.0035, recoil:0.26, adsFov:52, scope:false,
+      dmg:{head:52, torso:20, limb:13}, pellets:1,
+      hipSpread:0.019, adsSpread:0.003, recoil:0.2, adsFov:52, scope:false,
       model:{recv:0.44, barrel:0.40, rBar:0.026, stock:true, magType:'curved', brake:true, rail:true}
     },
     smg: {
       name:'Vector SMG', short:'SMG', mag:32, reload:1.2, rate:0.061, auto:true,
-      dmg:{head:31, torso:11, limb:8}, pellets:1,
-      hipSpread:0.036, adsSpread:0.010, recoil:0.17, adsFov:57, scope:false,
+      dmg:{head:34, torso:13, limb:9}, pellets:1,
+      hipSpread:0.028, adsSpread:0.008, recoil:0.15, adsFov:57, scope:false,
       model:{recv:0.32, barrel:0.20, rBar:0.023, stock:false, magType:'box', brake:false, rail:true}
     },
     shotgun: {
@@ -1128,8 +1128,8 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     },
     dmr: {
       name:'Longbow DMR', short:'DMR', mag:8, reload:2.05, rate:0.52, auto:false,
-      dmg:{head:135, torso:54, limb:30}, pellets:1,
-      hipSpread:0.052, adsSpread:0.0008, recoil:0.72, adsFov:0, scope:true, zooms:[4,8],
+      dmg:{head:120, torso:48, limb:28}, pellets:1,
+      hipSpread:0.045, adsSpread:0.0008, recoil:0.6, adsFov:0, scope:true, zooms:[2,3],
       model:{recv:0.58, barrel:0.52, rBar:0.028, stock:true, magType:'box', brake:true, rail:false}
     }
   };
@@ -1422,6 +1422,23 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     return [x, z];
   }
 
+  // Resolving only at the destination lets a fast mover (dash is ~0.9m/frame)
+  // land past a box's centreline, where the nearest-face push-out ejects it
+  // through the far side. Sub-stepping keeps every test shallower than the radius.
+  var MOVE_STEP = 0.18;
+  function moveWithCollision(x, z, dx, dz, radius){
+    var dist = Math.hypot(dx, dz);
+    if(dist < 1e-6) return resolveMove(x, z, radius);
+    var steps = Math.min(12, Math.max(1, Math.ceil(dist/MOVE_STEP)));
+    var sx = dx/steps, sz = dz/steps;
+    var cx = x, cz = z;
+    for(var i=0;i<steps;i++){
+      var r = resolveMove(cx + sx, cz + sz, radius);
+      cx = r[0]; cz = r[1];
+    }
+    return [cx, cz];
+  }
+
   function losBlocked(x1, z1, x2, z2, y){
     var dx = x2-x1, dz = z2-z1;
     var len = Math.hypot(dx, dz);
@@ -1446,22 +1463,22 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
   // ---------------------------------------------------------------- ENEMIES
   var ENEMY_TYPES = {
     scout: {
-      hp:58, speed:5.5, radius:0.48, range:7.5, fireRate:0.72, damage:7,
-      projSpeed:19, accuracy:0.10, score:100, scale:0.92,
+      hp:40, speed:4.6, radius:0.48, range:8.5, fireRate:1.05, damage:5,
+      projSpeed:17, accuracy:0.14, score:100, scale:0.92,
       body:0x27343a, accent:0x5fe1c9, lens:0x7dfff0, label:'Scout'
     },
     sentry: {
-      hp:165, speed:2.3, radius:0.62, range:13, fireRate:1.85, damage:17,
-      projSpeed:15, accuracy:0.05, score:220, scale:1.18,
+      hp:105, speed:2.1, radius:0.62, range:13, fireRate:2.4, damage:11,
+      projSpeed:14, accuracy:0.085, score:220, scale:1.18,
       body:0x3a3228, accent:0xff9142, lens:0xffc48a, label:'Sentry', burst:3
     },
     lancer: {
-      hp:78, speed:3.1, radius:0.5, range:20, fireRate:3.0, damage:26,
+      hp:55, speed:2.9, radius:0.5, range:19, fireRate:4.0, damage:18,
       projSpeed:0, accuracy:0.0, score:300, scale:1.0,
       body:0x33262c, accent:0xff4f56, lens:0xff8a8a, label:'Lancer', hitscan:true
     },
     boss: {
-      hp:900, speed:2.0, radius:1.6, range:15, fireRate:3.1, damage:22,
+      hp:700, speed:2.0, radius:1.6, range:15, fireRate:3.6, damage:18,
       projSpeed:17, accuracy:0.07, score:2500, scale:1.0,
       body:0x2b2f36, accent:0xffb648, lens:0xffd98a, label:'Warden', isBoss:true
     }
@@ -1636,22 +1653,59 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     };
   }
 
+  var barGeo = new THREE.PlaneGeometry(1, 1);
+  function makeHealthBar(width){
+    var g = new THREE.Group();
+    var bg = new THREE.Mesh(barGeo, new THREE.MeshBasicMaterial({
+      color:0x070c0d, transparent:true, opacity:0.8
+    }));
+    bg.scale.set(width + 0.05, 0.135, 1);
+    var fill = new THREE.Mesh(barGeo, new THREE.MeshBasicMaterial({color:0x5fe1c9}));
+    fill.scale.set(width, 0.085, 1);
+    fill.position.z = 0.006;
+    g.add(bg, fill);
+    g.traverse(function(o){ o.userData.nohit = true; });
+    g.userData.fill = fill;
+    g.userData.width = width;
+    scene.add(g);
+    return g;
+  }
+
+  function updateHealthBar(e){
+    var bar = e.bar;
+    if(!bar) return;
+    if(!e.alive){ bar.visible = false; return; }
+    var frac = Math.max(0, e.hp/e.maxHp);
+    var d = Math.hypot(e.x - camera.position.x, e.z - camera.position.z);
+    if(d > 48){ bar.visible = false; return; }
+    bar.visible = true;
+    bar.position.set(e.x, (e.isBoss ? 5.1 : 2.35*e.cfg.scale) , e.z);
+    bar.lookAt(camera.position);
+    var fill = bar.userData.fill, w = bar.userData.width;
+    fill.scale.x = Math.max(0.001, w*frac);
+    fill.position.x = -(w*(1-frac))/2;
+    fill.material.color.setHex(frac > 0.55 ? 0x5fe1c9 : frac > 0.25 ? 0xffc14a : 0xff4f56);
+    var s = Math.max(0.55, Math.min(2.2, d/9));
+    bar.scale.setScalar(s);
+  }
+
   function spawnEnemy(type, x, z){
     var T = ENEMY_TYPES[type];
     var parts = buildEnemyMesh(type);
     parts.group.position.set(x, 0, z);
     scene.add(parts.group);
 
-    var hp = T.isBoss ? T.hp + (wave-1)*130 : T.hp;
+    var hp = T.isBoss ? T.hp + (wave-1)*90 : T.hp;
     var e = {
       type:type, cfg:T, parts:parts, group:parts.group,
       x:x, z:z, yaw:0, hp:hp, maxHp:hp, alive:true,
-      radius:T.radius, fireTimer:1.0 + Math.random()*1.2,
+      radius:T.radius, fireTimer:1.9 + Math.random()*1.5,
       strafeDir: Math.random()<0.5 ? -1 : 1, strafeTimer: 1+Math.random()*2,
       walkPhase:Math.random()*6.28, deathTimer:0, charge:0, charging:false,
-      burstLeft:0, burstTimer:0, hitFlash:0,
+      burstLeft:0, burstTimer:0, hitFlash:0, everHit:false,
       slamCd:5, slamWind:0, volleySide:1, isBoss:!!T.isBoss
     };
+    e.bar = T.isBoss ? null : makeHealthBar(1.05);
     if(T.isBoss) activeBoss = e;
     parts.group.traverse(function(o){ if(o.isMesh) o.userData.owner = e; });
     enemies.push(e);
@@ -1677,6 +1731,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     if(part === 'limb') amount *= 0.7;
     e.hp -= amount;
     e.hitFlash = 0.12;
+    e.everHit = true;
     if(hitPoint){
       var col = part === 'head' ? [1.0,0.86,0.4] : [1.0,0.66,0.35];
       burstSparks(hitPoint.x, hitPoint.y, hitPoint.z, part==='head'?16:9, 5, col[0], col[1], col[2], 0.075);
@@ -1729,6 +1784,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
 
   function updateEnemy(e, dt){
     if(!e.alive){
+      if(e.bar) e.bar.visible = false;
       e.deathTimer -= dt;
       var t = Math.max(0, e.deathTimer/1.6);
       e.group.rotation.z += dt*1.6;
@@ -1736,11 +1792,13 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
       e.group.scale.setScalar(e.cfg.scale * (0.4 + t*0.6));
       if(e.deathTimer <= 0){
         scene.remove(e.group);
+        if(e.bar) scene.remove(e.bar);
         var idx = enemies.indexOf(e);
         if(idx >= 0) enemies.splice(idx, 1);
       }
       return;
     }
+    updateHealthBar(e);
 
     var T = e.cfg;
     var dx = player.x - e.x, dz = player.z - e.z;
@@ -1773,11 +1831,10 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     }
 
     var speed = T.speed * (quake.active ? 0.7 : 1);
-    var nxp = e.x + mx*speed*dt;
-    var nzp = e.z + mz*speed*dt;
-    var before = [nxp, nzp];
-    var res = resolveMove(nxp, nzp, e.radius);
-    if(Math.abs(res[0]-before[0]) > 0.002 || Math.abs(res[1]-before[1]) > 0.002){
+    var wantX = e.x + mx*speed*dt;
+    var wantZ = e.z + mz*speed*dt;
+    var res = moveWithCollision(e.x, e.z, mx*speed*dt, mz*speed*dt, e.radius);
+    if(Math.abs(res[0]-wantX) > 0.002 || Math.abs(res[1]-wantZ) > 0.002){
       e.strafeDir *= -1;
     }
     for(var oi=0; oi<enemies.length; oi++){
@@ -2438,6 +2495,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
       amount -= absorbed;
     }
     player.hp -= amount;
+    player.regenDelay = 5.5;
     flashDamage();
     SFX.hurt();
     shakeAmount = Math.max(shakeAmount, 0.18);
@@ -2462,9 +2520,9 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
       q.push('boss');
       return q;
     }
-    var scouts = Math.min(7, 2 + Math.floor(n*0.8));
-    var sentries = n >= 2 ? Math.min(4, Math.floor((n-1)*0.7) + 1) : 0;
-    var lancers = n >= 3 ? Math.min(3, Math.floor((n-2)*0.5) + 1) : 0;
+    var scouts = Math.min(6, 2 + Math.floor(n*0.55));
+    var sentries = n >= 3 ? Math.min(3, Math.floor((n-2)*0.5) + 1) : 0;
+    var lancers = n >= 5 ? Math.min(2, Math.floor((n-4)*0.4) + 1) : 0;
     for(i=0;i<scouts;i++) q.push('scout');
     for(i=0;i<sentries;i++) q.push('sentry');
     for(i=0;i<lancers;i++) q.push('lancer');
@@ -2517,7 +2575,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     var aliveCount = 0;
     for(var i=0;i<enemies.length;i++) if(enemies[i].alive) aliveCount++;
 
-    var maxAlive = Math.min(4 + Math.floor(wave/2), 8);
+    var maxAlive = Math.min(3 + Math.floor(wave/3), 6);
     if(waveQueue.length > 0 && aliveCount < maxAlive){
       var type = waveQueue.shift();
       var sp = pickSpawn();
@@ -2681,7 +2739,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     var hits = raycaster.intersectObjects(scene.children, true);
     for(var i=0;i<hits.length;i++){
       var o = hits[i].object;
-      if(o.userData.viewModel || o.userData.decal) continue;
+      if(o.userData.viewModel || o.userData.decal || o.userData.nohit) continue;
       if(o === rain || o === sky || o.isSprite || o.isPoints || o.isLine) continue;
       if(o.material && o.material.transparent && o.material.opacity < 0.6) continue;
       return hits[i];
@@ -2862,9 +2920,13 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     player.leanAmt += (leanTarget - player.leanAmt)*Math.min(1, dt*9);
     if(Math.abs(player.leanAmt) > 0.02){
       var lsin = Math.cos(player.yaw), lcos = -Math.sin(player.yaw);
-      var lx = player.x + lsin*player.leanAmt*0.62;
-      var lz = player.z + lcos*player.leanAmt*0.62;
-      if(pointBlocked(lx, lz, player.eye, 0.16)) player.leanAmt *= 0.4;
+      while(Math.abs(player.leanAmt) > 0.02 &&
+            pointBlocked(player.x + lsin*player.leanAmt*0.62,
+                         player.z + lcos*player.leanAmt*0.62,
+                         player.eye, 0.3)){
+        player.leanAmt *= 0.5;
+      }
+      if(Math.abs(player.leanAmt) <= 0.02) player.leanAmt = 0;
     }
 
     if(keys.turnL) player.yaw += 2.2*dt*(player.aiming?0.5:1);
@@ -2900,11 +2962,11 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     player.vx += (mvx - player.vx) * Math.min(1, dt*14);
     player.vz += (mvz - player.vz) * Math.min(1, dt*14);
 
-    var nx = player.x + player.vx*dt;
-    var nz = player.z + player.vz*dt;
-    var res = resolveMove(nx, nz, player.radius);
-    if(Math.abs(res[0]-nx) > 0.001) player.vx *= 0.2;
-    if(Math.abs(res[1]-nz) > 0.001) player.vz *= 0.2;
+    var wantX = player.x + player.vx*dt;
+    var wantZ = player.z + player.vz*dt;
+    var res = moveWithCollision(player.x, player.z, player.vx*dt, player.vz*dt, player.radius);
+    if(Math.abs(res[0]-wantX) > 0.001) player.vx *= 0.2;
+    if(Math.abs(res[1]-wantZ) > 0.001) player.vz *= 0.2;
     player.x = res[0]; player.z = res[1];
 
     var moveSpeed = Math.hypot(player.vx, player.vz);
@@ -2920,6 +2982,11 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
         if(rs) rs.ammo = WEAPONS[rs.type].mag;
       }
     }
+    if(player.regenDelay > 0) player.regenDelay -= dt;
+    else if(player.hp < player.maxHp && player.hp > 0){
+      player.hp = Math.min(player.maxHp, player.hp + 11*dt);
+    }
+
     if(player.fireCooldown > 0) player.fireCooldown -= dt;
     if(keys.fire && (W.auto || !player.firedThisPress)){
       player.firedThisPress = true;
@@ -2939,11 +3006,12 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     player.y = player.eye + bobY;
     var leanX = Math.cos(player.yaw)*player.leanAmt*0.62;
     var leanZ = -Math.sin(player.yaw)*player.leanAmt*0.62;
-    camera.position.set(
-      player.x + bobX + camShake.x + leanX,
-      player.y + camShake.y - Math.abs(player.leanAmt)*0.09,
-      player.z + camShake.z + leanZ
-    );
+    var camX = player.x + bobX + camShake.x + leanX;
+    var camZ = player.z + camShake.z + leanZ;
+    // Last line of defence: never let the eye sit inside geometry, or the near
+    // plane clips the wall and you see straight through it.
+    if(pointBlocked(camX, camZ, player.eye, 0.22)){ camX = player.x; camZ = player.z; }
+    camera.position.set(camX, player.y + camShake.y - Math.abs(player.leanAmt)*0.09, camZ);
     camera.rotation.set(
       player.pitch + player.recoilPitch + (shakeAmount>0.001 ? (Math.random()*2-1)*shakeAmount*0.012 : 0),
       player.yaw,
@@ -3084,6 +3152,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
   function clearEntities(){
     for(var i=enemies.length-1;i>=0;i--){
       lancerSight(enemies[i], false);
+      if(enemies[i].bar) scene.remove(enemies[i].bar);
       scene.remove(enemies[i].group);
     }
     enemies.length = 0;
@@ -3111,6 +3180,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     player.crouch = false; player.crouchAmt = 0; player.lean = 0; player.leanAmt = 0;
     player.eye = EYE_STAND;
     player.recoil = 0; player.recoilPitch = 0; player.dashCd = 0; player.dashTime = 0;
+    player.regenDelay = 0;
     keys.crouch = false; keys.leanL = false; keys.leanR = false;
     camera.fov = player.baseFov; camera.updateProjectionMatrix();
     scopeOverlay.classList.remove('show');
