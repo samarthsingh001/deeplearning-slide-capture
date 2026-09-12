@@ -115,6 +115,19 @@ canvas{display:block; width:100%; height:100%;}
   100%{opacity:0; transform:translate(-50%,-140%) scale(1);}
 }
 
+#dmg-numbers{position:absolute; inset:0; overflow:hidden;}
+.dmg{
+  position:absolute; font-family:'Share Tech Mono',monospace; font-weight:700;
+  transform:translate(-50%,-50%); white-space:nowrap; text-shadow:0 1px 3px rgba(0,0,0,0.9);
+  animation:dmgfloat 0.72s ease-out forwards;
+}
+.dmg .part{font-size:0.62em; letter-spacing:0.12em; opacity:0.85; margin-left:4px;}
+@keyframes dmgfloat{
+  0%{opacity:0; transform:translate(-50%,-50%) scale(0.7);}
+  18%{opacity:1; transform:translate(-50%,-84%) scale(1.08);}
+  100%{opacity:0; transform:translate(-50%,-190%) scale(0.95);}
+}
+
 #control-bar{
   position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
   display:flex; align-items:center; gap:16px;
@@ -340,6 +353,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     </g></svg>
   </div>
   <div id="popups"></div>
+  <div id="dmg-numbers"></div>
 
   <div id="banner"><div class="big" id="banner-big">Wave 1</div><div class="small" id="banner-small">Hostiles inbound</div></div>
 
@@ -1107,28 +1121,32 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
   };
 
   // ---------------------------------------------------------------- WEAPONS
+  var PART_MULT  = {head:2.8, neck:2.3, chest:1.25, torso:0.95, limb:0.5, weak:3.2};
+  var PART_LABEL = {head:'HEAD', neck:'NECK', chest:'CHEST', torso:'BODY', limb:'LIMB', weak:'CORE'};
+  var PART_COLOR = {head:'#ffd24a', neck:'#ffd24a', chest:'#ffa24a', torso:'#ff8d5a', limb:'#9fb0ae', weak:'#ff6b4a'};
+
   var WEAPONS = {
     rifle: {
       name:'MK4 Carbine', short:'MK4', mag:30, reload:1.55, rate:0.098, auto:true,
-      dmg:{head:52, torso:20, limb:13}, pellets:1,
+      dmg:20, pellets:1,
       hipSpread:0.019, adsSpread:0.003, recoil:0.2, adsFov:52, scope:false,
       model:{recv:0.44, barrel:0.40, rBar:0.026, stock:true, magType:'curved', brake:true, rail:true}
     },
     smg: {
       name:'Vector SMG', short:'SMG', mag:32, reload:1.2, rate:0.061, auto:true,
-      dmg:{head:34, torso:13, limb:9}, pellets:1,
+      dmg:13, pellets:1,
       hipSpread:0.028, adsSpread:0.008, recoil:0.15, adsFov:57, scope:false,
       model:{recv:0.32, barrel:0.20, rBar:0.023, stock:false, magType:'box', brake:false, rail:true}
     },
     shotgun: {
       name:'Breacher 12', short:'SG', mag:7, reload:2.15, rate:0.78, auto:false,
-      dmg:{head:27, torso:14, limb:9}, pellets:9,
+      dmg:9, pellets:9,
       hipSpread:0.058, adsSpread:0.034, recoil:0.85, adsFov:60, scope:false,
       model:{recv:0.46, barrel:0.50, rBar:0.037, stock:true, magType:'tube', brake:false, rail:false}
     },
     dmr: {
       name:'Longbow DMR', short:'DMR', mag:8, reload:2.05, rate:0.52, auto:false,
-      dmg:{head:120, torso:48, limb:28}, pellets:1,
+      dmg:46, pellets:1,
       hipSpread:0.045, adsSpread:0.0008, recoil:0.6, adsFov:0, scope:true, zooms:[2,3],
       model:{recv:0.58, barrel:0.52, rBar:0.028, stock:true, magType:'box', brake:true, rail:false}
     }
@@ -1330,6 +1348,18 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
   makeDrum(-15.5, -5.5, true);
   makeDrum(3.0, -16.0, false);
 
+  // Snapshot of the solid world geometry, taken once the arena and drums exist.
+  var staticShootables = [];
+  (function collectStaticShootables(){
+    scene.traverse(function(o){
+      if(!o.isMesh) return;
+      if(o === sky || o === outer) return;
+      if(o.userData.viewModel || o.userData.decal || o.userData.nohit) return;
+      if(o.material && o.material.transparent && o.material.opacity < 0.6) return;
+      staticShootables.push(o);
+    });
+  })();
+
   function explodeDrum(d){
     if(!d.alive) return;
     d.alive = false;
@@ -1500,11 +1530,11 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
 
     var chest = new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.5, 1.25), bodyMat);
     chest.position.y = 3.1; chest.castShadow = true;
-    chest.userData.part = 'torso';
+    chest.userData.part = 'chest';
 
     var collar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.32, 1.0), plateMat);
     collar.position.y = 3.95;
-    collar.userData.part = 'torso';
+    collar.userData.part = 'neck';
 
     var headM = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.52, 0.7), bodyMat);
     headM.position.y = 4.3; headM.castShadow = true;
@@ -1587,7 +1617,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
 
     var chest = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.62, 0.42), bodyMat);
     chest.position.y = 1.4; chest.castShadow = true;
-    chest.userData.part = 'torso';
+    chest.userData.part = 'chest';
 
     var pauldronL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.36, 0.4), plateMat);
     pauldronL.position.set(-0.42, 1.48, 0); pauldronL.castShadow = true;
@@ -1595,21 +1625,25 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     var pauldronR = pauldronL.clone(); pauldronR.position.x = 0.42;
     pauldronR.userData.part = 'limb';
 
-    var neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 0.14, 8), bodyMat);
-    neck.position.y = 1.78;
-    neck.userData.part = 'head';
+    // The neck must physically bridge chest-top to head-bottom. A thin one left a
+    // gap at ~1.6m — exactly standing eye height — that shots passed clean through.
+    // The neck must physically overlap both chest and head. A thin one left a gap
+    // at ~1.6m — standing eye height — that level shots passed clean through.
+    var neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.23, 0.34, 10), bodyMat);
+    neck.position.y = 1.73;
+    neck.userData.part = 'neck';
 
-    var headM = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.26, 0.32), bodyMat);
-    headM.position.y = 1.94; headM.castShadow = true;
+    var headM = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.4, 0.4), bodyMat);
+    headM.position.y = 1.97; headM.castShadow = true;
     headM.userData.part = 'head';
 
-    var visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.04), lensMat);
-    visor.position.set(0, 1.95, 0.17);
+    var visor = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.11, 0.04), lensMat);
+    visor.position.set(0, 1.99, 0.21);
     visor.userData.part = 'head';
 
     var coreRing = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.035, 8, 16), lensMat);
     coreRing.position.set(0, 1.42, 0.215);
-    coreRing.userData.part = 'torso';
+    coreRing.userData.part = 'chest';
 
     var armGeo = new THREE.BoxGeometry(0.14, 0.5, 0.15);
     var armL = new THREE.Mesh(armGeo, bodyMat);
@@ -1649,7 +1683,8 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     g.scale.setScalar(T.scale);
     return {
       group:g, legL:legL, legR:legR, visor:visor, coreRing:coreRing,
-      armL:armL, armR:armR, weapon:weapon, chest:chest, lensMat:lensMat, plateMat:plateMat
+      armL:armL, armR:armR, weapon:weapon, chest:chest,
+      lensMat:lensMat, plateMat:plateMat, bodyMat:bodyMat
     };
   }
 
@@ -1706,6 +1741,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
       slamCd:5, slamWind:0, volleySide:1, isBoss:!!T.isBoss
     };
     e.bar = T.isBoss ? null : makeHealthBar(1.05);
+    e.bodyMat = parts.bodyMat || null;
     if(T.isBoss) activeBoss = e;
     parts.group.traverse(function(o){ if(o.isMesh) o.userData.owner = e; });
     enemies.push(e);
@@ -1726,17 +1762,21 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
   }
 
   function damageEnemy(e, amount, part, hitPoint){
-    if(!e.alive) return;
-    if(e.type === 'sentry' && part === 'torso') amount *= 0.72;
-    if(part === 'limb') amount *= 0.7;
+    if(!e.alive) return 0;
+    if(e.type === 'sentry' && (part === 'torso' || part === 'chest')) amount *= 0.75;
+    amount = Math.max(1, Math.round(amount));
+    var dealt = Math.min(amount, Math.max(0, e.hp));
     e.hp -= amount;
-    e.hitFlash = 0.12;
+    e.hitFlash = 0.14;
     e.everHit = true;
     if(hitPoint){
-      var col = part === 'head' ? [1.0,0.86,0.4] : [1.0,0.66,0.35];
-      burstSparks(hitPoint.x, hitPoint.y, hitPoint.z, part==='head'?16:9, 5, col[0], col[1], col[2], 0.075);
+      var heavy = (part === 'head' || part === 'neck' || part === 'weak');
+      var col = heavy ? [1.0,0.86,0.4] : part === 'limb' ? [0.75,0.82,0.85] : [1.0,0.66,0.35];
+      burstSparks(hitPoint.x, hitPoint.y, hitPoint.z, heavy ? 20 : part === 'limb' ? 7 : 12,
+                  5.5, col[0], col[1], col[2], heavy ? 0.095 : 0.07);
     }
     if(e.hp <= 0) killEnemy(e, part);
+    return dealt;
   }
 
   function killEnemy(e, part){
@@ -1808,6 +1848,10 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     e.hitFlash = Math.max(0, e.hitFlash - dt);
     var flashing = e.hitFlash > 0;
     e.parts.lensMat.color.setHex(flashing ? 0xffffff : T.lens);
+    if(e.bodyMat){
+      var f = e.hitFlash/0.14;
+      e.bodyMat.emissive.setRGB(f*0.85, f*0.7, f*0.55);
+    }
 
     e.strafeTimer -= dt;
     if(e.strafeTimer <= 0){
@@ -2372,7 +2416,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     hp:100, maxHp:100, armor:0,
     x:0, z:20, y:EYE_STAND, eye:EYE_STAND,
     vx:0, vz:0,
-    yaw:Math.PI, pitch:0,
+    yaw:0, pitch:0,
     speed:6.6, radius:0.46,
     slots:[{type:'rifle', ammo:30}, null, null],
     slot:0, swapTimer:0,
@@ -2425,6 +2469,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
   var bannerBig = document.getElementById('banner-big');
   var bannerSmall = document.getElementById('banner-small');
   var popups = document.getElementById('popups');
+  var dmgNumbers = document.getElementById('dmg-numbers');
   var chArms = {
     t:document.getElementById('ch-t'), b:document.getElementById('ch-b'),
     l:document.getElementById('ch-l'), r:document.getElementById('ch-r')
@@ -2461,6 +2506,22 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     if(crit) el.style.fontSize = '18px';
     popups.appendChild(el);
     setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 900);
+  }
+
+  var projectVec = new THREE.Vector3();
+  function showDamageNumber(worldPoint, amount, part){
+    if(!amount) return;
+    projectVec.copy(worldPoint).project(camera);
+    if(projectVec.z > 1) return;
+    var el = document.createElement('div');
+    el.className = 'dmg';
+    el.innerHTML = amount + '<span class="part">' + (PART_LABEL[part] || '') + '</span>';
+    el.style.color = PART_COLOR[part] || '#ff8d5a';
+    el.style.fontSize = (part === 'head' || part === 'neck' || part === 'weak') ? '21px' : '15px';
+    el.style.left = ((projectVec.x*0.5 + 0.5)*window.innerWidth) + 'px';
+    el.style.top  = ((-projectVec.y*0.5 + 0.5)*window.innerHeight) + 'px';
+    dmgNumbers.appendChild(el);
+    setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 760);
   }
 
   var bannerTimer = 0;
@@ -2733,14 +2794,25 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     SFX.dry();
   }
 
+  // Raycasting the whole scene walks the Sprites too, and three r128's
+  // Sprite.raycast dereferences raycaster.camera unconditionally — with it unset
+  // that threw on every shot, which is why nothing ever took damage. Shoot at an
+  // explicit list of solid targets instead, and keep the camera set as a backstop.
+  var shotTargets = [];
   function traceShot(dir){
+    shotTargets.length = 0;
+    for(var s=0;s<staticShootables.length;s++) shotTargets.push(staticShootables[s]);
+    for(var e=0;e<enemies.length;e++){
+      if(enemies[e].alive) shotTargets.push(enemies[e].group);
+    }
+    raycaster.camera = camera;
     raycaster.set(shootOrigin, dir);
     raycaster.far = 95;
-    var hits = raycaster.intersectObjects(scene.children, true);
+    var hits = raycaster.intersectObjects(shotTargets, true);
     for(var i=0;i<hits.length;i++){
       var o = hits[i].object;
+      if(!o.isMesh) continue;
       if(o.userData.viewModel || o.userData.decal || o.userData.nohit) continue;
-      if(o === rain || o === sky || o.isSprite || o.isPoints || o.isLine) continue;
       if(o.material && o.material.transparent && o.material.opacity < 0.6) continue;
       return hits[i];
     }
@@ -2754,16 +2826,17 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
     var drum = obj.userData.drum;
 
     if(owner && owner.alive){
-      var part = obj.userData.part || 'torso';
-      if(obj.userData.weak) part = 'head';
-      damageEnemy(owner, W.dmg[part], part, hit.point);
+      var part = obj.userData.weak ? 'weak' : (obj.userData.part || 'torso');
+      var dealt = damageEnemy(owner, W.dmg * PART_MULT[part], part, hit.point);
+      showDamageNumber(hit.point, dealt, part);
+      var crit = (part === 'head' || part === 'neck' || part === 'weak');
       if(!owner.alive) showHitmarker('kill');
-      else if(part === 'head'){ showHitmarker('crit'); SFX.crit(); }
+      else if(crit){ showHitmarker('crit'); SFX.crit(); }
       else { showHitmarker(); SFX.hit(); }
       return true;
     }
     if(drum && drum.alive){
-      drum.hp -= W.dmg.torso * 1.4;
+      drum.hp -= W.dmg * 1.6;
       burstSparks(hit.point.x, hit.point.y, hit.point.z, 10, 4.5, 1, 0.75, 0.3, 0.08);
       showHitmarker();
       SFX.hit();
@@ -3171,7 +3244,7 @@ h1{font-size:clamp(28px,6vw,42px); margin:0 0 8px; font-weight:700; line-height:
   function resetGame(){
     clearEntities();
     player.hp = player.maxHp; player.armor = 0;
-    player.x = 0; player.z = 20; player.yaw = Math.PI; player.pitch = 0;
+    player.x = 0; player.z = 20; player.yaw = 0; player.pitch = 0;
     player.vx = player.vz = 0;
     player.slots = [{type:'rifle', ammo:WEAPONS.rifle.mag}, null, null];
     player.slot = 0; player.swapTimer = 0; player.zoomIdx = 0;
